@@ -1,89 +1,65 @@
 <?php
 include('./simplehtmldom/simple_html_dom.php');
-// $myfile = fopen("list.txt", "r+") or die("Unable to open file!");
-// echo fread($myfile, filesize("list.txt"));
-// fclose($myfile);
+include('user_agents.php');
+include('fake_search_terms.php');
 
-$opts = array(
-    'http'=>array(
-      'header'=>"User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36\r\n"
-    )
-  );
-
-$context = stream_context_create($opts);
-$array = file('list1.txt');
 $remaining_array = Array();
 $successful_array = Array();
 
-define("TERMS", "Hilarious");
-$before = true;
-$counter = 0;
+$val = getopt("t:p:f:");
+
+$search_fixed_term = $val['t'];
+$position = $val['p'];
+$names_filename = $val['f'];
+
+$array = file($names_filename);
+
+define("TERMS", $search_fixed_term);
+define("POSITION", $position);
 
 foreach($array as $e) {
-    echo "<br>" .++$counter . "<br>"; 
-    if($before == true){
-        $new_e = TERMS . " " . trim($e);
-    } else {
-        $new_e = trim($e) . " " . TERMS;
-    }    
-    // echo $new_e . "\n";
-    $searchWords = str_replace(' ', '+', rtrim($new_e));
-    // echo $searchWords . "\n";
-    
-    $url = 'https://www.google.com/search?num=100&en&q="' . $searchWords . '"&meta=""';
-    // $url = 'http://localhost/server.html';
+    $url = prepareSearchTermUrl($e);
     echo $url;
-    // $url .= $new_e;
-    // echo $new_e . '<br>';
-    // echo $new_e . ' :: ' . $url .' :: ';
+    $context = getUserAgentHeader($user_agents);
+    exit("done");
+
     $html = file_get_html($url, false, $context);
 
     while($html == false OR empty($html)) 
     {
-        echo "hey";
         $html = file_get_html($url, false, $context);
     } 
 
     // echo $html;
     if($html !== false AND !empty($html)){
-        echo "<br>Correct<br>";
-        $actual_result;
-        $total_result;
+        // echo "<br>Correct<br>";
+        $actual_result = '';
+        $total_result = '';
         foreach($html->find('div[id=result-stats]') as $el)
         {
-            echo $el->innertext . "\n";
             $val = $el->innertext;
             preg_match('/(?<=About ).*(?= results)/', $val, $matches);
-            echo $matches[0] . '<br>';
             $total_result = $matches[0];
-            // array_push($successful_array, Array(rtrim($e), $url, filter_var($matches[0], FILTER_SANITIZE_NUMBER_INT)));
         }
 
         foreach($html->find('p[id=ofr] ') as $el)
         {
-            echo $el->children(0)->innertext . "<br>";
             $val = $el->children(0)->innertext;
             preg_match('/(?<=In order to show you the most relevant results, we have omitted some entries very similar to the ).*(?= already displayed)/', $val, $matches);
-            echo $matches[0] . '<br>';
             $actual_result = $matches[0];
-            // array_push($successful_array, Array(rtrim($e), $url, filter_var($matches[0], FILTER_SANITIZE_NUMBER_INT)));
         }
         
     } else {
         array_push($remaining_array, rtrim($e)); 
-        echo "False<br>";
+        // echo "<br>False<br>";
     }
-    array_push($successful_array, Array(trim($e), $url, filter_var($total_result, FILTER_SANITIZE_NUMBER_INT), filter_var($actual_result, FILTER_SANITIZE_NUMBER_INT)));   
-
-    //preg_match('/(?<=About ).*(?= results )/', 'About 893,000 results (0.62 seconds)', $matches);
+    
+    array_push($successful_array, Array(trim($e), $url, filter_var($total_result, FILTER_SANITIZE_NUMBER_INT), filter_var($actual_result, FILTER_SANITIZE_NUMBER_INT)));
+    $string_to_file = trim($e) .  ", " . $url .  ", " . filter_var($total_result, FILTER_SANITIZE_NUMBER_INT) .  ", " . filter_var($actual_result, FILTER_SANITIZE_NUMBER_INT);
+    writeStringToFile('success.csv', $string_to_file);
 }
 
-// foreach($remaining_array as $arr){
-//     file_put_contents('remaining.txt', $arr, FILE_APPEND);
-// }
-
-
-function writeToFile($filename, $array)
+function writeArrayToFile($filename, $array)
 { 
     foreach($array as $arr){
         // echo "<br>" . ++$counter2 . "<br>";
@@ -106,6 +82,45 @@ function writeToFile($filename, $array)
     }
 }
 
-writeToFile('success1.csv', $successful_array);
-writeToFile('remaining1.csv', $remaining_array);
+function writeStringToFile($filename, $string)
+{ 
+    file_put_contents($filename, $string . "\n", FILE_APPEND);
+}
+
+function makeFakeSearchRequest($fake_search_terms)
+{
+    $url = $fake_search_terms[rand(0, count($fake_search_terms))];
+    file_get_html($url, false, $context);
+}
+
+function prepareSearchTermUrl($e)
+{
+    $e = trim($e);
+    if(POSITION == "pre"){
+        $e_with_fixed_terms = TERMS . " " . $e;
+    } else {
+        $e_with_fixed_terms = $e . " " . TERMS;
+    }    
+    // echo $e_with_fixed_terms . "\n";
+    $searchWords = str_replace(' ', '+', $e_with_fixed_terms);
+    // echo $searchWords . "\n";
+    
+    $final_url = 'https://www.google.com/search?num=100&en&q="' . $searchWords . '"&meta=""';
+    // $final_url = 'http://localhost/server.html';
+    return $final_url;
+}
+
+function getUserAgentHeader($user_agents)
+{
+    $opts = array(
+        'http'=>array(
+          'header'=>"User-Agent:" . $user_agents[rand(0, count($user_agents))] . "\r\n"
+        )
+      );
+    var_dump($opts);
+    return stream_context_create($opts);
+}
+
+writeArrayToFile('success_array.csv', $successful_array);
+writeToFile('remaining.csv', $remaining_array);
 ?>
